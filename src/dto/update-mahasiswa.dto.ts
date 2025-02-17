@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Jenis_kelamin } from '@prisma/client';
+import { Jenis_Kelamin } from '@prisma/client';
 import { IsString, IsNotEmpty, Length, IsEnum } from 'class-validator';
 
 export class updateMahasiswaDto {
@@ -44,9 +44,10 @@ export class updateMahasiswaDto {
 
   @ApiProperty({
     description: 'Jenis Kelamin',
-    enum: Jenis_kelamin,
+    enum: Jenis_Kelamin,
     example: 'P',
   })
-  @IsEnum(Jenis_kelamin)
-  jenis_kelamin: Jenis_kelamin;
+  @IsEnum(Jenis_Kelamin)
+  jenis_kelamin: Jenis_Kelamin;
+  foto_profile: any;
 }

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <header>
+        <h1>Selamat Datang di Dashboard</h1>
+        <nav>
+            <ul>
+                <li><a href="#" onclick="logout()">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="tips">
+            <h2>Daftar Anggota Kelompok 6</h2>
+            <ul>
+                <li>Mar'atul Azizah.</li>
+                <li>Andi Angke Reona Megawan.</li>
+                <li>Alya Ananda.</li>
+                <li>Alizha Nur Arspandy.</li>
+                <li>A Fachri.</li>
+                <li>Dia Rahmatillah.</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Kelompok 6. All rights reserved.</p>
+    </footer>
+
+    <script>
+        function logout() {
+            alert("Anda telah logout.");
+            localStorage.removeItem("token"); // Hapus token dari local storage
+            document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"; // Hapus token dari cookie
+            window.location.href = "login.html"; // Kembali ke halaman login
+        }
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        // Tambahkan event listener untuk mendeteksi perubahan pada local storage
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'token' && !event.newValue) {
+                // Token dihapus, logout pengguna
+                window.location.href = 'login.html';
+            }
+        });
+
+        // Periksa token di local storage dan cookie saat halaman dimuat
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('token');
+            const cookieToken = getCookie('token');
+            if (!token || !cookieToken) {
+                // Token tidak ada, logout pengguna
+                window.location.href = 'login.html';
+            }
+        });
+
+        // Tambahkan interval untuk memeriksa token di cookie secara berkala
+        setInterval(() => {
+            const cookieToken = getCookie('token');
+            if (!cookieToken) {
+                // Token dihapus dari cookie, logout pengguna
+                window.location.href = 'login.html';
+            }
+        }, 1000); // Periksa setiap detik
+    </script>
+</body>
+</html>

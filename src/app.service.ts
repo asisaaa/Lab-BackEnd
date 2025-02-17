@@ -2,100 +2,135 @@ import { BadRequestException, HttpException, Injectable, InternalServerErrorExce
 import { CreateMahasiswaDto } from './dto/create-mahasiswa.dto';
 import prisma from './prisma';
 import { RegisterUserDTO } from './dto/register-user.dto';
-import { hash } from 'crypto';
-import { compare, compareSync, hashSync } from 'bcrypt';
+import { hashSync, compareSync } from 'bcrypt';
 import { LoginUserDTO } from './dto/login-user.dto';
-import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { extname, join } from 'path';
+import { updateMahasiswaDto } from './dto/update-mahasiswa.dto';
+import { User } from './entity/user.entity';
 
 @Injectable()
 export class AppService {
-  constructor(private readonly jwtService: JwtService) { }
+  constructor(private readonly jwtService: JwtService) {}
+
+  async uploadMahasiswaFoto(file: Express.Multer.File, nim: string) {
+    const mahasiswa = await prisma.mahasiswa.findFirst({ where: { nim } });
+    if (!mahasiswa) throw new NotFoundException('Mahasiswa Tidak Ditemukan');
+
+    if (mahasiswa.foto_profile
+    ) {
+      const filePath = `../uploads/${mahasiswa.foto_profile}`;
+      if (existsSync(filePath)) {
+        rmSync(filePath);
+      }
+    }
+
+    const uploadPath = join(__dirname,`../uploads/`);
+    if (!existsSync(uploadPath)) {
+      mkdirSync(uploadPath);
+    }
+
+    const fileExt = extname(file.originalname);
+    const baseFilename = mahasiswa.nim;
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const filename = `${baseFilename}-${uniqueSuffix}${fileExt}`;
+    const filePath = `${uploadPath}${filename}`;
+
+    writeFileSync(filePath, file.buffer);
+    await prisma.mahasiswa.update({
+      where: { nim },
+      data: { foto_profile: filename },
+    });
+
+    return filename;
+  }
+
+  async getMahasiwaFoto(nim: string) {
+    const mahasiswa = await prisma.mahasiswa.findFirst({ where: { nim } });
+    if (!mahasiswa) throw new NotFoundException('Mahasiswa Tidak Ditemukan');
+    return mahasiswa.foto_profile;
+  }
+  async searchMahasiswa( nim?: string) {
+    try{
+      const mahasiswa = await prisma.mahasiswa.findMany({
+        where:{
+          AND:[
+            // nama?{nama:{contains:nama,mode:'insensitive'}}:{},
+            nim?{nim:{equals:nim}}:{},
+          ],
+        },
+      })
+      return mahasiswa;
+    }catch (error){
+    throw new InternalServerErrorException('ada masalah pada server')
+    }
+  }
+
   async register(data: RegisterUserDTO) {
     try {
       const user = await prisma.user.findFirst({
         where: {
-          username: data.username
-        }
-      })
-      if (user != null) {
-        throw new BadRequestException("Username Sudah Ada")
-      }
-      const hash = hashSync(data.password, 10)
+          username: data.username,
+        },
+      });
+      if (user != null) throw new BadRequestException('Username Sudah Ada');
+
+      const hash = hashSync(data.password, 10);
       const newUser = await prisma.user.create({
         data: {
           username: data.username,
           password: hash,
-          role: "USER"
-        }
-      })
-      return newUser
-
+          role: "user", 
+        },
+      });
+      return newUser;
     } catch (err) {
-      throw new BadRequestException("Ada Masalah Pada Server")
+      throw new InternalServerErrorException('Ada Masalah Pada Server');
     }
   }
-  async auth(user_id : number) {
+
+  async auth(user_id: number) {
     try {
       const user = await prisma.user.findFirst({
-        where : {
-          id : user_id
-        }
-      })
-      if(user == null) throw new NotFoundException("User Tidak Ditemukan")
-        return user
-      }catch(err) {
-        if(err instanceof HttpException) throw err
-        throw new InternalServerErrorException("Terdapat Masalah Dari Server Harap Coba Lagi dalam beberapa menit")
-      }
+        where: {
+          id: user_id,
+        },
+      });
+      if (user == null) throw new NotFoundException('User Tidak Ditemukan');
+      return user;
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException('Terdapat Masalah Dari Server Harap Coba Lagi dalam beberapa menit');
     }
-    
+  }
 
   async login(data: LoginUserDTO) {
     try {
-      // Validasi input
-      if (!data.username || !data.password) {
-        throw new BadRequestException("Username dan Password harus diisi");
-      }
-  
-      // Cari user berdasarkan username
       const user = await prisma.user.findFirst({
-        where: { username: data.username },
+        where: {
+          username: data.username,
+        },
       });
-  
-      if (!user) {
-        throw new BadRequestException("Username Tidak Ada");
-      }
-  
-      // Validasi password
-      const isPasswordValid = await compare(data.password, user.password);
-      if (!isPasswordValid) {
-        throw new BadRequestException("Password Salah");
-      }
-  
-      // Buat payload untuk JWT
+      if (user == null) throw new NotFoundException('Username Tidak Ditemukan');
+
+      const isPasswordValid = compareSync(data.password, user.password);
+      if (!isPasswordValid) throw new BadRequestException('Password Salah');
+
       const payload = {
         id: user.id,
         username: user.username,
-        role: user.role,
-        exp: Math.floor(Date.now() / 1000) + 60 * 60, // 1 jam
+        role: user.role, // Pastikan role ada di payload
       };
-  
-      // Generate token
       const token = await this.jwtService.signAsync(payload);
-  
-      // Jangan log token di produksi!
-      console.log("Token berhasil dibuat: ", token);
-  
-      return { token };
+      return {
+        token: token,
+        user,
+      };
     } catch (err) {
-      console.error("Error during login process: ", err);
-      if (err instanceof HttpException) throw err;
-      throw new InternalServerErrorException("Ada Masalah Pada Server");
+      throw new InternalServerErrorException('Ada Masalah Pada Server');
     }
   }
-  
-
 
   async getMahasiswa() {
     return await prisma.mahasiswa.findMany();
@@ -104,61 +139,67 @@ export class AppService {
   async getMahasiswaByNIM(nim: string) {
     const mahasiswa = await prisma.mahasiswa.findFirst({
       where: {
-        nim
-      }
-    })
+        nim,
+      },
+    });
 
-    if (mahasiswa == null)
-      throw new NotFoundException("Tidak Menemukan NIM")
+    if (mahasiswa == null) throw new NotFoundException('Tidak Menemukan NIM');
 
-    return mahasiswa
-
+    return mahasiswa;
   }
 
   async addMahasiswa(data: CreateMahasiswaDto) {
     await prisma.mahasiswa.create({
-      data
-    })
+      data,
+    });
 
-    return await prisma.mahasiswa.findMany()
+    return await prisma.mahasiswa.findMany();
   }
 
   async deleteMahasiswa(nim: string) {
     const mahasiswa = await prisma.mahasiswa.findFirst({
       where: {
-        nim
-      }
-    })
+        nim,
+      },
+    });
 
     if (mahasiswa == null) {
-      throw new NotFoundException("Tidak Menemukan NIM")
+      throw new NotFoundException('Tidak Menemukan NIM');
     }
 
     await prisma.mahasiswa.delete({
       where: {
-        nim
-      }
-    })
+        nim,
+      },
+    });
 
-    return await prisma.mahasiswa.findMany()
+    return await prisma.mahasiswa.findMany();
   }
-  async putMahasiswa(nim: string) {
+
+  async updateMahasiswa(nim: string, data: updateMahasiswaDto) {
     const mahasiswa = await prisma.mahasiswa.findFirst({
       where: {
-        nim
-      }
-    })
-
+        nim,
+      },
+    });
+  
     if (mahasiswa == null) {
-      throw new NotFoundException("Tidak Menemukan NIM")
+      throw new NotFoundException('Tidak Menemukan NIM');
     }
-
-    await prisma.mahasiswa.delete({
+  
+    await prisma.mahasiswa.update({
       where: {
-        nim
-      }
-    })
-
-    return await prisma.mahasiswa.findMany()
+        nim,
+      },
+      data: {
+        nama: data.nama,
+        kelas: data.kelas,
+        jurusan: data.jurusan,
+        jenis_kelamin: data.jenis_kelamin,
+        foto_profile: data.foto_profile,
+      },
+    });
+  
+    return await prisma.mahasiswa.findMany();
   }
 }
